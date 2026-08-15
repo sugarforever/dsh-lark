@@ -117,7 +117,7 @@ npx @deepseek-ai/dsh web
 从 npm 安装到 Harness Web Profile：
 
 ```sh
-npx @deepseek-ai/dsh plugin --profile web add @sugarforever/dsh-lark
+npx @deepseek-ai/dsh plugin --profile web add @sugarforever/dsh-lark@0.1.1
 ```
 
 查看已经安装的插件：
@@ -407,7 +407,7 @@ dmMode: disabled
 
 ```sh
 npx @deepseek-ai/dsh plugin --profile web remove @sugarforever/dsh-lark
-npx @deepseek-ai/dsh plugin --profile web add @sugarforever/dsh-lark
+npx @deepseek-ai/dsh plugin --profile web add @sugarforever/dsh-lark@0.1.1
 ```
 
 卸载插件：

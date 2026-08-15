@@ -24,4 +24,11 @@ describe('release configuration', () => {
     expect(workflow).not.toContain('NPM_TOKEN')
     expect(workflow).toContain('npm publish "$GITHUB_WORKSPACE/${{ steps.pack.outputs.path }}"')
   })
+
+  it('pins README installation commands to the package version', async () => {
+    const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+    const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8')
+    expect(readme).toContain(`plugin --profile web add @sugarforever/dsh-lark@${pkg.version}`)
+    expect(readme).not.toMatch(/plugin --profile web add @sugarforever\/dsh-lark(?:\s|$)/)
+  })
 })
