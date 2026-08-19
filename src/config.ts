@@ -23,6 +23,14 @@ export interface Config {
   workspace?: string
   agentPreset?: string
   errorMessage?: string
+  /**
+   * Add a transient "Typing" reaction badge to the inbound message while the
+   * reply is being generated, removed on completion, and a "CrossMark" badge on
+   * failure — mirroring the Hermes Feishu adapter. Feishu has no typing API, so
+   * the reaction is the "processing" signal. Requires the message-reaction
+   * write permission on the app. Disabled by default.
+   */
+  processingReactions?: boolean
 }
 
 export interface SettingsConfig extends Required<Pick<Config,
@@ -33,6 +41,7 @@ export interface SettingsConfig extends Required<Pick<Config,
   model?: string
   workspace?: string
   agentPreset?: string
+  processingReactions?: boolean
 }
 
 export interface RuntimeConfig extends Omit<SettingsConfig, 'appSecretRef'> {
@@ -54,6 +63,7 @@ export const ConfigSchema: z<Config> = z.object({
   workspace: z.string(),
   agentPreset: z.string(),
   errorMessage: z.string().default(DEFAULT_ERROR_MESSAGE),
+  processingReactions: z.boolean().default(false).description('Add a transient "Typing" reaction while processing and a "CrossMark" on failure'),
 })
 
 export function resolveSettingsConfig(config: Config): SettingsConfig {
@@ -75,6 +85,7 @@ export function resolveSettingsConfig(config: Config): SettingsConfig {
     ...(config.model === undefined ? {} : { model: config.model }),
     ...(config.workspace === undefined ? {} : { workspace: config.workspace }),
     ...(config.agentPreset === undefined ? {} : { agentPreset: config.agentPreset }),
+    ...(config.processingReactions === undefined ? {} : { processingReactions: config.processingReactions }),
   }
 }
 

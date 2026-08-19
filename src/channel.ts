@@ -46,14 +46,46 @@ export async function startChannel(
   const unsubscribers = [
     channel.on('message', async (message: NormalizedMessage) => {
       const replyInThread = message.threadId !== undefined
+
+      // Transient "processing" reaction — mirrors the Hermes Feishu adapter.
+      // Feishu exposes no typing API, so the "正在输入" signal is a reaction
+      // badge ("Typing") added to the inbound message, removed once the reply
+      // lands, and replaced by a "CrossMark" badge when the turn fails.
+      // Best-effort: a missing message-reaction permission only logs a warning
+      // and never blocks the reply itself.
+      let processingReactionId: string | null = null
+      const clearProcessingReaction = async () => {
+        const id = processingReactionId
+        processingReactionId = null
+        if (id && message.messageId) {
+          await channel.removeReaction(message.messageId, id).catch((error: unknown) => {
+            logError(`dsh-lark: processing reaction remove failed (best-effort): ${error instanceof Error ? error.message : String(error)}`)
+          })
+        }
+      }
+      if (config.processingReactions && message.messageId) {
+        try {
+          processingReactionId = (await channel.addReaction(message.messageId, 'Typing')) ?? null
+        } catch (error: unknown) {
+          logError(`dsh-lark: processing reaction add failed: ${error instanceof Error ? error.message : String(error)}`)
+        }
+      }
+
       try {
         const text = await bridge.reply(message)
+        await clearProcessingReaction()
         await channel.send(message.chatId, { markdown: text }, {
           replyTo: message.messageId,
           replyInThread,
         })
       } catch (error: unknown) {
+        await clearProcessingReaction()
         logError(`dsh-lark: message handling failed: ${error instanceof Error ? error.message : String(error)}`)
+        if (config.processingReactions && message.messageId) {
+          await channel.addReaction(message.messageId, 'CrossMark').catch((reactionError: unknown) => {
+            logError(`dsh-lark: failure reaction add failed (best-effort): ${reactionError instanceof Error ? reactionError.message : String(reactionError)}`)
+          })
+        }
         await channel.send(message.chatId, { text: config.errorMessage }, {
           replyTo: message.messageId,
           replyInThread,

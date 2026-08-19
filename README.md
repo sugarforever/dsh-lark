@@ -81,6 +81,14 @@ npx @deepseek-ai/dsh web
 
 这组配置对应插件的默认行为：接收单聊消息、接收群聊中 @机器人的消息，以及以机器人身份发送回复。导入后仍需在事件订阅中添加 `im.message.receive_v1`，并发布新版本，权限和事件配置才会应用到已安装的机器人。
 
+如果启用 `processingReactions: true`（在收到消息时显示「正在处理」的 Typing 表情徽标），还需要额外开通消息表情回复写权限：
+
+| 权限标识 | 控制台中的权限名称 | 用途 | 是否必需 |
+| --- | --- | --- | --- |
+| `im:message.reactions:write_only` | 添加、删除消息表情回复 | 给消息添加/移除 Typing、CrossMark 表情徽标 | 仅开启 `processingReactions` 时需要 |
+
+该权限缺失时插件不会报错，只是不显示表情徽标；回复本身不受影响。
+
 如果需要让机器人处理群聊中没有 @机器人的普通消息，还要额外开通：
 
 | 权限标识 | 控制台中的权限名称 | 用途 | 是否必需 |
@@ -240,6 +248,7 @@ Harness 重启后，插件会恢复对应的持久化 Session；如果该 Sessio
     workspace: /absolute/path/to/workspace
     agentPreset: coding
     errorMessage: 抱歉，处理这条消息时遇到了问题，请稍后重试。
+    processingReactions: true
 ```
 
 | 配置项 | 必填 | 默认值 | 说明 |
@@ -256,6 +265,7 @@ Harness 重启后，插件会恢复对应的持久化 Session；如果该 Sessio
 | `workspace` | 否 | 第一个已注册 Workspace；没有时为 DSH 进程工作目录 | Agent 使用的工作目录；显式路径优先 |
 | `agentPreset` | 否 | Harness 当前默认 Preset | Agent 使用的 Preset，决定工具、系统提示等组合 |
 | `errorMessage` | 否 | 内置中文提示 | Agent 执行失败时返回给用户的文本，最长 500 个字符 |
+| `processingReactions` | 否 | `false` | 收到消息时给消息添加「Typing」表情作为「正在处理」提示，回复发出时移除；失败时换成「CrossMark」。飞书没有"正在输入"API，因此用表情徽标实现。需要应用开通消息表情回复写权限（`im:message.reactions:write_only`）。 |
 
 `provider` 和 `model` 建议同时设置。如果都不设置，插件会读取 Harness 当前的默认模型配置。
 
