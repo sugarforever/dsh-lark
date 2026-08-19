@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Add an optional `processingReactions` setting that shows a transient "Typing"
+  reaction badge on the inbound message while a reply is being generated
+  (removed on completion, replaced with a "CrossMark" on failure), mirroring the
+  Hermes Feishu adapter. Feishu exposes no typing API, so the reaction is the
+  "正在输入" signal. Requires the `im:message.reactions:write_only` permission.
+
 ## 0.2.2
 
 - Restore npm 12 lockfile entries required for clean Linux CI installs.

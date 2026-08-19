@@ -7,6 +7,8 @@ function fakeChannel() {
     handlers,
     connect: vi.fn(async () => undefined), disconnect: vi.fn(async () => undefined),
     send: vi.fn(async () => ({ messageId: 'out' })),
+    addReaction: vi.fn(async () => 'reaction-1'),
+    removeReaction: vi.fn(async () => undefined),
     on: vi.fn((name: string, handler: Function) => { handlers.set(name, handler); return () => handlers.delete(name) }),
   }
 }
@@ -69,5 +71,50 @@ describe('startChannel', () => {
     expect(logger.error).toHaveBeenCalledWith('dsh-lark: WebSocket connection failed: authentication failed for [redacted]')
     expect(terminal.error).toHaveBeenCalledWith('dsh-lark: WebSocket connection failed: authentication failed for [redacted]')
     expect(bridge.dispose).toHaveBeenCalledOnce()
+  })
+
+  it('adds a Typing reaction on start and removes it on completion when enabled', async () => {
+    const channel = fakeChannel()
+    const bridge = { reply: vi.fn(async () => 'done'), dispose: vi.fn(async () => undefined) }
+    await startChannel({
+      appId: 'id', appSecret: 'secret', domain: 'feishu', requireMention: true, dmMode: 'open',
+      groupAllowlist: [], dmAllowlist: [], workspace: '/work', errorMessage: 'safe error',
+      processingReactions: true,
+    }, bridge, () => channel as any, { info: vi.fn(), warn: vi.fn(), error: vi.fn() })
+    const message = { messageId: 'om_1', chatId: 'oc_1', chatType: 'p2p', content: 'hi' }
+    await channel.handlers.get('message')!(message)
+
+    expect(channel.addReaction).toHaveBeenCalledWith('om_1', 'Typing')
+    expect(channel.removeReaction).toHaveBeenCalledWith('om_1', 'reaction-1')
+    expect(channel.send).toHaveBeenCalledWith('oc_1', { markdown: 'done' }, { replyTo: 'om_1', replyInThread: false })
+  })
+
+  it('replaces the Typing reaction with a CrossMark when the turn fails', async () => {
+    const channel = fakeChannel()
+    const bridge = { reply: vi.fn(async () => { throw new Error('boom') }), dispose: vi.fn(async () => undefined) }
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    await startChannel({
+      appId: 'id', appSecret: 'secret', domain: 'feishu', requireMention: true, dmMode: 'open',
+      groupAllowlist: [], dmAllowlist: [], workspace: '/work', errorMessage: 'safe error',
+      processingReactions: true,
+    }, bridge, () => channel as any, logger)
+    await channel.handlers.get('message')!({ messageId: 'om_1', chatId: 'oc_1', chatType: 'p2p', content: 'hi' })
+
+    expect(channel.addReaction).toHaveBeenCalledWith('om_1', 'Typing')
+    expect(channel.removeReaction).toHaveBeenCalledWith('om_1', 'reaction-1')
+    expect(channel.addReaction).toHaveBeenCalledWith('om_1', 'CrossMark')
+    expect(channel.send).toHaveBeenCalledWith('oc_1', { text: 'safe error' }, { replyTo: 'om_1', replyInThread: false })
+  })
+
+  it('does not react when processingReactions is disabled', async () => {
+    const channel = fakeChannel()
+    const bridge = { reply: vi.fn(async () => 'done'), dispose: vi.fn(async () => undefined) }
+    await startChannel({
+      appId: 'id', appSecret: 'secret', domain: 'feishu', requireMention: true, dmMode: 'open',
+      groupAllowlist: [], dmAllowlist: [], workspace: '/work', errorMessage: 'safe error',
+    }, bridge, () => channel as any, { info: vi.fn(), warn: vi.fn(), error: vi.fn() })
+    await channel.handlers.get('message')!({ messageId: 'om_1', chatId: 'oc_1', chatType: 'p2p', content: 'hi' })
+    expect(channel.addReaction).not.toHaveBeenCalled()
+    expect(channel.removeReaction).not.toHaveBeenCalled()
   })
 })
