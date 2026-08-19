@@ -14,13 +14,14 @@ import type { Config as PluginConfig, SettingsConfig } from './config.ts'
 import { HarnessConversationService } from './harness.ts'
 import { startChannel } from './channel.ts'
 import { LarkRuntime } from './runtime.ts'
+import { createDurableChatWorkspaceStore } from './chat-workspace.ts'
 import { createSettingsApi } from './settings-api.ts'
 import { handleSettingsRequest, SETTINGS_PATH } from './web.ts'
 
 export const name = 'lark-channel'
 export const inject = [
   'agents', 'sessions', 'sessionPersistence', 'agentDefaultModel', 'agentPresets', 'workspaceRegistry',
-  'settings', 'credentials', 'webServer',
+  'settings', 'credentials', 'webServer', 'storageDomain',
 ]
 export const Config = ConfigSchema
 export type { PluginConfig }
@@ -39,6 +40,11 @@ export async function apply(ctx: Context, rawConfig: PluginConfig): Promise<void
   if (agents === undefined || sessions === undefined || sessionPersistence === undefined || defaultModel === undefined || agentPresets === undefined || workspaceRegistry === undefined || settings === undefined || credentials === undefined || webServer === undefined) {
     throw new Error('dsh-lark requires Harness agent, settings, credentials, workspace, and webServer services')
   }
+
+  // Durable per-chat workspace selection so a chat keeps working in its chosen
+  // directory across restarts (falls back to in-memory when storage is absent).
+  const chatWorkspace = await createDurableChatWorkspaceStore(ctx)
+  ctx.effect(() => () => void chatWorkspace.dispose(), 'dsh-lark: chat workspace store')
 
   const settingsScope = settings.register(
     settingsNamespace(LARK_SETTINGS_NAMESPACE),
@@ -60,6 +66,7 @@ export async function apply(ctx: Context, rawConfig: PluginConfig): Promise<void
         selection: () => defaultModel.currentSelection(),
         agentPresets,
         workspaceRegistry,
+        chatWorkspaces: chatWorkspace.store,
       }, config)
       return startChannel(config, bridge, createLarkChannel, ctx.logger, console)
     },

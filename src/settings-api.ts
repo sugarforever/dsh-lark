@@ -31,7 +31,8 @@ export type SettingsUpdate = Omit<Config, 'appSecret' | 'appSecretRef' | Nullabl
 
 const SETTINGS_KEYS = new Set([
   'appId', 'domain', 'requireMention', 'dmMode', 'groupAllowlist', 'dmAllowlist',
-  'provider', 'model', 'workspace', 'agentPreset', 'errorMessage', 'appSecret', 'expectedRevision',
+  'provider', 'model', 'workspace', 'agentPreset', 'errorMessage', 'enableCardPicker',
+  'appSecret', 'expectedRevision',
 ])
 
 export function createSettingsApi(deps: SettingsApiDependencies) {

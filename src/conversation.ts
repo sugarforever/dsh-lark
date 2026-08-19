@@ -9,10 +9,14 @@ export interface ConversationMessage {
   replyToMessageId?: string
 }
 
-export function conversationKey(message: ConversationMessage): string {
-  return message.threadId === undefined
+export function conversationKey(message: ConversationMessage, workspacePath?: string): string {
+  const base = message.threadId === undefined
     ? `chat:${message.chatId}`
     : `thread:${message.chatId}:${message.threadId}`
+  // A workspace-scoped conversation key keeps sessions for different selected
+  // directories separate: switching a chat's workspace starts a fresh session
+  // in that directory without disturbing the previous one.
+  return workspacePath === undefined ? base : `${base}:workspace:${workspacePath}`
 }
 
 export function toSessionId(domain: DomainName, key: string): SessionId {
