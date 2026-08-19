@@ -23,6 +23,13 @@ export interface Config {
   workspace?: string
   agentPreset?: string
   errorMessage?: string
+  /**
+   * Send an interactive workspace-picker card on `/workspace` so the user can
+   * switch working directories by clicking a button (mirrors the web UI).
+   * Requires the app to receive the `card.action.trigger` callback (e.g. via
+   * long connection). Disabled by default.
+   */
+  enableCardPicker?: boolean
 }
 
 export interface SettingsConfig extends Required<Pick<Config,
@@ -33,6 +40,7 @@ export interface SettingsConfig extends Required<Pick<Config,
   model?: string
   workspace?: string
   agentPreset?: string
+  enableCardPicker?: boolean
 }
 
 export interface RuntimeConfig extends Omit<SettingsConfig, 'appSecretRef'> {
@@ -54,6 +62,7 @@ export const ConfigSchema: z<Config> = z.object({
   workspace: z.string(),
   agentPreset: z.string(),
   errorMessage: z.string().default(DEFAULT_ERROR_MESSAGE),
+  enableCardPicker: z.boolean().default(false).description('Send an interactive workspace-picker card on /workspace'),
 })
 
 export function resolveSettingsConfig(config: Config): SettingsConfig {
@@ -75,6 +84,7 @@ export function resolveSettingsConfig(config: Config): SettingsConfig {
     ...(config.model === undefined ? {} : { model: config.model }),
     ...(config.workspace === undefined ? {} : { workspace: config.workspace }),
     ...(config.agentPreset === undefined ? {} : { agentPreset: config.agentPreset }),
+    ...(config.enableCardPicker === undefined ? {} : { enableCardPicker: config.enableCardPicker }),
   }
 }
 

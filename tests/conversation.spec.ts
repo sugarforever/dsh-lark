@@ -16,6 +16,14 @@ describe('conversation identity', () => {
     expect(a).not.toBe(toSessionId('lark', 'chat:oc_secret'))
     expect(a.length).toBeLessThanOrEqual(64)
   })
+
+  it('scopes the conversation key by workspace so switching starts a fresh session', () => {
+    const base = { chatId: 'oc_1', chatType: 'p2p' as const }
+    expect(conversationKey(base)).toBe('chat:oc_1')
+    expect(conversationKey(base, '/projects/a')).toBe('chat:oc_1:workspace:/projects/a')
+    expect(conversationKey(base, '/projects/a')).not.toBe(conversationKey(base, '/projects/b'))
+    expect(conversationKey({ ...base, threadId: 'omt_1' }, '/p')).toBe('thread:oc_1:omt_1:workspace:/p')
+  })
 })
 
 describe('summarizeTurn', () => {
