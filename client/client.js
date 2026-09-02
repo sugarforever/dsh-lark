@@ -41,6 +41,9 @@ const EMPTY_FORM = {
 	dmAllowlist: "",
 	provider: "",
 	model: "",
+	reasoningEffort: "",
+	maxTokens: "",
+	typingReaction: "",
 	workspace: "",
 	agentPreset: "",
 	errorMessage: ""
@@ -64,6 +67,9 @@ function LarkSettingsSection({ t, loadModels }) {
 			dmAllowlist: next.settings.dmAllowlist.join("\n"),
 			provider: next.settings.provider ?? "",
 			model: next.settings.model ?? "",
+			reasoningEffort: next.settings.reasoningEffort ?? "",
+			maxTokens: next.settings.maxTokens === void 0 ? "" : String(next.settings.maxTokens),
+			typingReaction: next.settings.typingReaction ?? "",
 			workspace: next.settings.workspace ?? "",
 			agentPreset: next.settings.agentPreset ?? "",
 			errorMessage: next.settings.errorMessage
@@ -119,9 +125,12 @@ function LarkSettingsSection({ t, loadModels }) {
 		for (const key of [
 			"provider",
 			"model",
+			"reasoningEffort",
+			"typingReaction",
 			"workspace",
 			"agentPreset"
 		]) body[key] = form[key].trim() === "" ? null : form[key].trim();
+		body.maxTokens = form.maxTokens.trim() === "" ? null : Number(form.maxTokens);
 		if (form.appSecret !== "") body.appSecret = form.appSecret;
 		try {
 			const response = await fetch("/dsh-lark/settings", {
@@ -355,6 +364,27 @@ function LarkSettingsSection({ t, loadModels }) {
 										value: form.model,
 										onChange: (event) => update("model", event.target.value)
 									})] }),
+									/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("label", { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("reasoningEffort") }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)(__deepseek_ai_dsh_client_ui_primitives.Input, {
+										"aria-label": "reasoningEffort",
+										value: form.reasoningEffort,
+										onChange: (event) => update("reasoningEffort", event.target.value),
+										placeholder: "low"
+									})] }),
+									/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("label", { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("maxTokens") }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)(__deepseek_ai_dsh_client_ui_primitives.Input, {
+										"aria-label": "maxTokens",
+										type: "number",
+										min: "1",
+										step: "1",
+										value: form.maxTokens,
+										onChange: (event) => update("maxTokens", event.target.value),
+										placeholder: "8192"
+									})] }),
+									/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("label", { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("typingReaction") }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)(__deepseek_ai_dsh_client_ui_primitives.Input, {
+										"aria-label": "typingReaction",
+										value: form.typingReaction,
+										onChange: (event) => update("typingReaction", event.target.value),
+										placeholder: "Typing"
+									})] }),
 									/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("label", { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("workspace") }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)(__deepseek_ai_dsh_client_ui_primitives.Input, {
 										value: form.workspace,
 										onChange: (event) => update("workspace", event.target.value)
@@ -449,6 +479,9 @@ const dictionaries = {
 		agent: "Agent 配置",
 		provider: "Provider",
 		model: "Model",
+		reasoningEffort: "推理强度",
+		maxTokens: "最大输出 Token",
+		typingReaction: "处理中表情",
 		workspace: "Workspace",
 		agentPreset: "Agent Preset",
 		errorMessage: "失败提示",
@@ -492,6 +525,9 @@ const dictionaries = {
 		agent: "Agent configuration",
 		provider: "Provider",
 		model: "Model",
+		reasoningEffort: "Reasoning effort",
+		maxTokens: "Maximum output tokens",
+		typingReaction: "Processing reaction",
 		workspace: "Workspace",
 		agentPreset: "Agent Preset",
 		errorMessage: "Failure message",

@@ -1,5 +1,5 @@
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { conversationKey, summarizeTurn, toSessionId } from './conversation.ts'
 import type { ConversationMessage } from './conversation.ts'
 import type { DomainName } from './config.ts'
@@ -42,9 +42,12 @@ export interface HarnessBridgeConfig {
   agentPreset?: string
   provider?: string
   model?: string
+  reasoningEffort?: string
+  maxTokens?: number
 }
 
 export interface InboundMessage extends ConversationMessage { content: string }
+export interface HarnessReply { text: string; toolCalls: number }
 
 export class HarnessConversationService {
   private readonly handles = new Map<string, Promise<AgentHandleLike>>()
@@ -52,6 +55,10 @@ export class HarnessConversationService {
   constructor(private readonly deps: HarnessDependencies, private readonly config: HarnessBridgeConfig) {}
 
   async reply(message: InboundMessage): Promise<string> {
+    return (await this.replyWithMetrics(message)).text
+  }
+
+  async replyWithMetrics(message: InboundMessage): Promise<HarnessReply> {
     const key = conversationKey(message)
     const handle = await this.getOrCreate(key)
     const agent = handle.agent
@@ -65,7 +72,7 @@ export class HarnessConversationService {
     await this.deps.sessions.flush(agent.session)
     const result = summarizeTurn(agent.session.events, firstSeq)
     if (!result.ok) throw new Error('Harness turn did not produce a successful assistant response')
-    return result.text
+    return { text: result.text, toolCalls: result.toolCalls }
   }
 
   async dispose(): Promise<void> {
@@ -95,6 +102,11 @@ export class HarnessConversationService {
     const selection = {
       provider: this.config.provider ?? fallback.provider,
       model: this.config.model ?? fallback.model,
+      ...(this.config.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(this.config.reasoningEffort) }),
+    }
+    const agentOptions = {
+      ...selection,
+      ...(this.config.maxTokens === undefined ? {} : { maxTokens: this.config.maxTokens }),
     }
     const workspace = this.config.workspace === undefined
       ? this.deps.workspaceRegistry.list()[0]
@@ -107,11 +119,11 @@ export class HarnessConversationService {
     }
     const persisted = (await this.deps.sessionPersistence.list()).some(item => item.id === sessionId)
     const handle = persisted
-      ? await this.deps.agents.resume({ resumeSessionId: sessionId, agentOptions: selection, setup })
+      ? await this.deps.agents.resume({ resumeSessionId: sessionId, agentOptions, setup })
       : await this.deps.agents.create({
         sessionId,
         meta: { cwd, agentPreset },
-        agentOptions: selection,
+        agentOptions,
         setup,
       })
     try {

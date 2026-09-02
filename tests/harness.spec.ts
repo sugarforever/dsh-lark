@@ -3,6 +3,7 @@ import { HarnessConversationService } from '../src/harness.ts'
 
 function fixture() {
   let seq = 0
+  let emittedToolCalls = 0
   const agents = new Map<string, any>()
   const createHandle = async (sessionId: string) => {
     const events: any[] = []
@@ -11,6 +12,9 @@ function fixture() {
       whenIdle: vi.fn(async () => undefined),
       followup: vi.fn((message: any) => {
         events.push({ seq: seq++, type: 'turn/start', data: {} })
+        for (let index = 0; index < emittedToolCalls; index += 1) {
+          events.push({ seq: seq++, type: 'tool/call', data: { name: `tool-${index}` } })
+        }
         events.push({ seq: seq++, type: 'assistant/message', data: { message: { content: [{ type: 'text', text: `answer:${message.content[0].text}` }] } } })
         events.push({ seq: seq++, type: 'turn/end', data: { reason: { kind: 'completed' } } })
       }),
@@ -24,7 +28,7 @@ function fixture() {
   const workspace = { path: '/first-workspace', attachSession: vi.fn(async () => undefined) }
   const mount = vi.fn(async () => undefined)
   const resolve = vi.fn(async (id?: string) => ({ id: id ?? 'default-preset' }))
-  return { create, resume, flush, agents, workspace, mount, resolve }
+  return { create, resume, flush, agents, workspace, mount, resolve, setToolCalls: (value: number) => { emittedToolCalls = value } }
 }
 
 function dependencies(f: ReturnType<typeof fixture>) {
@@ -53,11 +57,14 @@ describe('HarnessConversationService', () => {
     const deps = dependencies(f)
     const sessionId = 'lark-v2-427e3361f60f3bd896c74f6acd7d065d2e0198db'
     deps.sessionPersistence.list = vi.fn(async () => [{ id: sessionId }])
-    const service = new HarnessConversationService(deps, { domain: 'lark' })
+    const service = new HarnessConversationService(deps, { domain: 'lark', reasoningEffort: 'low', maxTokens: 8192 })
 
     await expect(service.reply({ chatId: 'a', chatType: 'p2p', content: 'again' })).resolves.toBe('answer:again')
 
-    expect(f.resume).toHaveBeenCalledWith(expect.objectContaining({ resumeSessionId: sessionId }))
+    expect(f.resume).toHaveBeenCalledWith(expect.objectContaining({
+      resumeSessionId: sessionId,
+      agentOptions: { provider: 'p', model: 'm', reasoningEffort: 'low', maxTokens: 8192 },
+    }))
     expect(f.create).not.toHaveBeenCalled()
   })
 
@@ -78,15 +85,20 @@ describe('HarnessConversationService', () => {
     expect(liveHandle.dispose).not.toHaveBeenCalled()
   })
 
-  it('isolates different chats and honors an explicit model route', async () => {
+  it('isolates different chats and honors explicit model latency controls', async () => {
     const f = fixture()
     const deps = dependencies(f)
     deps.selection = () => ({ provider: 'default', model: 'default' })
-    const service = new HarnessConversationService(deps, { domain: 'lark', workspace: '/work', provider: 'custom', model: 'model' })
+    const service = new HarnessConversationService(deps, {
+      domain: 'lark', workspace: '/work', provider: 'custom', model: 'model', reasoningEffort: 'low', maxTokens: 8192,
+    })
     await service.reply({ chatId: 'a', chatType: 'p2p', content: 'one' })
     await service.reply({ chatId: 'b', chatType: 'p2p', content: 'two' })
     expect(f.create).toHaveBeenCalledTimes(2)
-    expect(f.create).toHaveBeenCalledWith(expect.objectContaining({ agentOptions: { provider: 'custom', model: 'model' }, meta: { cwd: '/work', agentPreset: 'default-preset' } }))
+    expect(f.create).toHaveBeenCalledWith(expect.objectContaining({
+      agentOptions: { provider: 'custom', model: 'model', reasoningEffort: 'low', maxTokens: 8192 },
+      meta: { cwd: '/work', agentPreset: 'default-preset' },
+    }))
   })
 
   it('uses the first registered workspace and mounts the default agent preset', async () => {
@@ -100,6 +112,16 @@ describe('HarnessConversationService', () => {
     expect(f.resolve).toHaveBeenCalledWith(undefined)
     expect(f.mount).toHaveBeenCalledWith(agentCtx, 'default-preset')
     expect(f.workspace.attachSession).toHaveBeenCalledWith(options.sessionId)
+  })
+
+  it('returns tool-call metrics without changing the string reply API', async () => {
+    const f = fixture()
+    f.setToolCalls(1)
+    const service = new HarnessConversationService(dependencies(f), { domain: 'feishu' })
+    await expect(service.replyWithMetrics({ chatId: 'a', chatType: 'p2p', content: 'one' }))
+      .resolves.toEqual({ text: 'answer:one', toolCalls: 1 })
+    f.setToolCalls(0)
+    await expect(service.reply({ chatId: 'a', chatType: 'p2p', content: 'two' })).resolves.toBe('answer:two')
   })
 
   it('uses and mounts an explicitly configured workspace and preset', async () => {

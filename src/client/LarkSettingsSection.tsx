@@ -15,6 +15,9 @@ interface SettingsPayload {
     dmAllowlist: string[]
     provider?: string
     model?: string
+    reasoningEffort?: string
+    maxTokens?: number
+    typingReaction?: string
     workspace?: string
     agentPreset?: string
     errorMessage: string
@@ -33,6 +36,9 @@ interface FormState {
   dmAllowlist: string
   provider: string
   model: string
+  reasoningEffort: string
+  maxTokens: string
+  typingReaction: string
   workspace: string
   agentPreset: string
   errorMessage: string
@@ -63,7 +69,7 @@ interface LarkSettingsSectionProps {
 
 const EMPTY_FORM: FormState = {
   appId: '', appSecret: '', domain: 'feishu', requireMention: true, dmMode: 'open',
-  groupAllowlist: '', dmAllowlist: '', provider: '', model: '', workspace: '', agentPreset: '', errorMessage: '',
+  groupAllowlist: '', dmAllowlist: '', provider: '', model: '', reasoningEffort: '', maxTokens: '', typingReaction: '', workspace: '', agentPreset: '', errorMessage: '',
 }
 
 export function LarkSettingsSection({ t, loadModels }: LarkSettingsSectionProps): JSX.Element {
@@ -86,6 +92,9 @@ export function LarkSettingsSection({ t, loadModels }: LarkSettingsSectionProps)
       dmAllowlist: next.settings.dmAllowlist.join('\n'),
       provider: next.settings.provider ?? '',
       model: next.settings.model ?? '',
+      reasoningEffort: next.settings.reasoningEffort ?? '',
+      maxTokens: next.settings.maxTokens === undefined ? '' : String(next.settings.maxTokens),
+      typingReaction: next.settings.typingReaction ?? '',
       workspace: next.settings.workspace ?? '',
       agentPreset: next.settings.agentPreset ?? '',
       errorMessage: next.settings.errorMessage,
@@ -132,9 +141,10 @@ export function LarkSettingsSection({ t, loadModels }: LarkSettingsSectionProps)
       appId: form.appId.trim(), domain: form.domain, requireMention: form.requireMention, dmMode: form.dmMode,
       groupAllowlist: lines(form.groupAllowlist), dmAllowlist: lines(form.dmAllowlist), errorMessage: form.errorMessage,
     }
-    for (const key of ['provider', 'model', 'workspace', 'agentPreset'] as const) {
+    for (const key of ['provider', 'model', 'reasoningEffort', 'typingReaction', 'workspace', 'agentPreset'] as const) {
       body[key] = form[key].trim() === '' ? null : form[key].trim()
     }
+    body.maxTokens = form.maxTokens.trim() === '' ? null : Number(form.maxTokens)
     if (form.appSecret !== '') body.appSecret = form.appSecret
     try {
       const response = await fetch('/dsh-lark/settings', {
@@ -232,6 +242,9 @@ export function LarkSettingsSection({ t, loadModels }: LarkSettingsSectionProps)
             {modelIsUnknown ? <option value={form.model}>{form.model} ({t('notInCatalog')})</option> : null}
             {providerGroup?.models.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
           </select> : <Input aria-label={t('model')} value={form.model} onChange={event => update('model', event.target.value)} />}</label>
+          <label><span>{t('reasoningEffort')}</span><Input aria-label="reasoningEffort" value={form.reasoningEffort} onChange={event => update('reasoningEffort', event.target.value)} placeholder="low" /></label>
+          <label><span>{t('maxTokens')}</span><Input aria-label="maxTokens" type="number" min="1" step="1" value={form.maxTokens} onChange={event => update('maxTokens', event.target.value)} placeholder="8192" /></label>
+          <label><span>{t('typingReaction')}</span><Input aria-label="typingReaction" value={form.typingReaction} onChange={event => update('typingReaction', event.target.value)} placeholder="Typing" /></label>
           <label><span>{t('workspace')}</span><Input value={form.workspace} onChange={event => update('workspace', event.target.value)} /></label>
           <label><span>{t('agentPreset')}</span><Input value={form.agentPreset} onChange={event => update('agentPreset', event.target.value)} /></label>
         </div>

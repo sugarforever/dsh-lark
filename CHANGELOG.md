@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Optionally show a single Feishu/Lark processing reaction while an Agent turn runs and remove the bot-owned reaction after the reply or fallback completes.
+- Add channel-level `reasoningEffort` and `maxTokens` Agent overrides.
+- Log redacted per-message acknowledgement, Agent, send, total-duration, tool-count, and outcome metrics.
+
 ## 0.2.2
 
 - Restore npm 12 lockfile entries required for clean Linux CI installs.

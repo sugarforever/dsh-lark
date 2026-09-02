@@ -20,8 +20,12 @@ describe('resolveSettingsConfig', () => {
     expect(resolveSettingsConfig({
       appId: 'id', domain: 'lark', requireMention: false,
       dmMode: 'allowlist', groupAllowlist: ['oc_a'], dmAllowlist: ['ou_a'],
-      provider: 'deepseek-official', model: 'deepseek-v4-flash', workspace: '/work', agentPreset: 'coding',
-    })).toMatchObject({ domain: 'lark', dmMode: 'allowlist', groupAllowlist: ['oc_a'], dmAllowlist: ['ou_a'], workspace: '/work', agentPreset: 'coding' })
+      provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: ' low ', maxTokens: 8192,
+      typingReaction: ' Typing ', workspace: '/work', agentPreset: 'coding',
+    })).toMatchObject({
+      domain: 'lark', dmMode: 'allowlist', groupAllowlist: ['oc_a'], dmAllowlist: ['ou_a'],
+      reasoningEffort: 'low', maxTokens: 8192, typingReaction: 'Typing', workspace: '/work', agentPreset: 'coding',
+    })
   })
 
   it('requires a POSIX credential reference', () => {
@@ -30,6 +34,14 @@ describe('resolveSettingsConfig', () => {
 
   it('rejects an unbounded error response', () => {
     expect(() => resolveSettingsConfig({ appId: 'id', errorMessage: 'x'.repeat(501) })).toThrow(/errorMessage/)
+  })
+
+  it('keeps optional latency controls disabled and validates configured bounds', () => {
+    expect(resolveSettingsConfig({ appId: 'id', typingReaction: ' ', reasoningEffort: '' }))
+      .not.toMatchObject({ typingReaction: expect.anything(), reasoningEffort: expect.anything() })
+    expect(() => resolveSettingsConfig({ appId: 'id', maxTokens: 0 })).toThrow(/maxTokens/)
+    expect(() => resolveSettingsConfig({ appId: 'id', maxTokens: 1.5 })).toThrow(/maxTokens/)
+    expect(() => resolveSettingsConfig({ appId: 'id', typingReaction: 'x'.repeat(65) })).toThrow(/typingReaction/)
   })
 })
 

@@ -14,6 +14,8 @@
 - 群聊默认需要 @机器人，单聊默认开放。
 - 可以通过白名单限制群聊和单聊用户。
 - 可以沿用 Harness 默认模型，也可以为飞书渠道指定模型。
+- 可以为飞书渠道设置推理强度和最大输出 Token。
+- 可以在 Agent 处理期间给原消息添加一次可配置的 Typing reaction，并在回复完成后清理。
 - 会话标识经过 SHA-256 处理，不会把原始 `chat_id` 写进 Session ID。
 - Harness 内部错误不会直接发送给飞书用户。
 
@@ -54,13 +56,14 @@ npx @deepseek-ai/dsh web
 
 ### 添加权限
 
-默认配置下，应用需要开通以下三个权限：
+默认配置下，应用需要开通前三个权限；启用 `typingReaction` 时再开通第四个表情写权限：
 
 | 权限标识 | 控制台中的权限名称 | 用途 | 是否必需 |
 | --- | --- | --- | --- |
 | `im:message.p2p_msg:readonly` | 获取用户发给机器人的单聊消息 | 接收用户与机器人的单聊消息 | 是 |
 | `im:message.group_at_msg:readonly` | 获取群组中 @机器人的消息 | 接收群聊中明确 @机器人的消息 | 是 |
 | `im:message:send_as_bot` | 以应用的身份发消息 | 让机器人回复单聊、群聊和话题消息 | 是 |
+| `im:message.reactions:write_only` | 添加和删除消息表情回复 | 配置 `typingReaction` 时显示和清理处理中状态 | 仅配置处理中表情时需要 |
 
 飞书控制台中显示的中文名称可能随平台版本略有调整，应以权限标识为准。添加 `im.message.receive_v1` 事件时，控制台通常也会提示补充前两个接收权限。
 
@@ -72,14 +75,15 @@ npx @deepseek-ai/dsh web
     "tenant": [
       "im:message.group_at_msg:readonly",
       "im:message.p2p_msg:readonly",
-      "im:message:send_as_bot"
+      "im:message:send_as_bot",
+      "im:message.reactions:write_only"
     ],
     "user": []
   }
 }
 ```
 
-这组配置对应插件的默认行为：接收单聊消息、接收群聊中 @机器人的消息，以及以机器人身份发送回复。导入后仍需在事件订阅中添加 `im.message.receive_v1`，并发布新版本，权限和事件配置才会应用到已安装的机器人。
+这组配置对应启用处理中表情后的行为：接收单聊消息、接收群聊中 @机器人的消息、以机器人身份发送回复，以及添加和清理处理中表情。若不配置 `typingReaction`，可从导入列表中删除 `im:message.reactions:write_only`。导入后仍需在事件订阅中添加 `im.message.receive_v1`，并发布新版本，权限和事件配置才会应用到已安装的机器人。
 
 如果需要让机器人处理群聊中没有 @机器人的普通消息，还要额外开通：
 
@@ -237,6 +241,9 @@ Harness 重启后，插件会恢复对应的持久化 Session；如果该 Sessio
       - ou_xxxxxxxxxxxxxxxx
     provider: deepseek-official
     model: deepseek-v4-flash
+    reasoningEffort: low
+    maxTokens: 8192
+    typingReaction: Typing
     workspace: /absolute/path/to/workspace
     agentPreset: coding
     errorMessage: 抱歉，处理这条消息时遇到了问题，请稍后重试。
@@ -253,6 +260,9 @@ Harness 重启后，插件会恢复对应的持久化 Session；如果该 Sessio
 | `dmAllowlist` | 否 | `[]` | `dmMode: allowlist` 时允许访问的用户 `open_id` 列表 |
 | `provider` | 否 | Harness 默认值 | 为这个渠道指定模型 Provider |
 | `model` | 否 | Harness 默认值 | 为这个渠道指定模型 |
+| `reasoningEffort` | 否 | Provider/模型默认值 | 为这个渠道指定模型支持的推理强度 ID，例如 `low` |
+| `maxTokens` | 否 | Harness 默认值 | 每次模型请求允许的最大输出 Token，必须是正整数 |
+| `typingReaction` | 否 | 关闭 | 处理消息时添加的飞书/Lark reaction，例如 `Typing`；回复或失败提示发送后删除 |
 | `workspace` | 否 | 第一个已注册 Workspace；没有时为 DSH 进程工作目录 | Agent 使用的工作目录；显式路径优先 |
 | `agentPreset` | 否 | Harness 当前默认 Preset | Agent 使用的 Preset，决定工具、系统提示等组合 |
 | `errorMessage` | 否 | 内置中文提示 | Agent 执行失败时返回给用户的文本，最长 500 个字符 |
@@ -316,6 +326,8 @@ dmMode: disabled
 - 超过五分钟的延迟事件不会当作新消息处理。
 - 每次 Agent turn 结束后，插件会要求 Harness 刷新 Session 存储。
 - 回复只读取当前消息之后产生的 assistant 文本，不会误发上一轮回答。
+- `typingReaction` 每条消息只添加一次，不会定时刷新；添加或清理失败不会阻止正式回复。
+- 每次处理结束会记录 `ack_ms`、`agent_ms`、`send_ms`、`total_ms`、工具调用数和结果状态，不包含消息正文或聊天标识。
 
 ## 安全说明
 
