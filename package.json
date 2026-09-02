@@ -57,7 +57,7 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1",
-    "@larksuiteoapi/node-sdk": "^1.59.0"
+    "@larksuiteoapi/node-sdk": "^1.73.0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",

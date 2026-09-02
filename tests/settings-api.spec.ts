@@ -70,6 +70,16 @@ describe('settings API', () => {
     expect(update).toHaveBeenCalledWith({}, ['provider', 'model'], 7)
   })
 
+  it('updates and unsets model latency controls', async () => {
+    const { api, update } = setup()
+    await api.update({ reasoningEffort: 'low', maxTokens: 8192, typingReaction: 'Typing', expectedRevision: 7 })
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      reasoningEffort: 'low', maxTokens: 8192, typingReaction: 'Typing',
+    }), [], 7)
+    await api.update({ reasoningEffort: null, maxTokens: null, typingReaction: null, expectedRevision: 7 })
+    expect(update).toHaveBeenLastCalledWith({}, ['reasoningEffort', 'maxTokens', 'typingReaction'], 7)
+  })
+
   it('does not write a secret when the settings revision is stale', async () => {
     const updateSettings = vi.fn(async () => { throw new Error('settings conflict') })
     const { api, credentials } = setup({ updateSettings })

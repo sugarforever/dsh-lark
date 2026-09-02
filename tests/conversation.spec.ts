@@ -23,15 +23,16 @@ describe('summarizeTurn', () => {
     const events = [
       { seq: 1, type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'old' }] } } },
       { seq: 2, type: 'turn/start', data: {} },
-      { seq: 3, type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'new ' }, { type: 'text', text: 'answer' }] } } },
-      { seq: 4, type: 'turn/end', data: { reason: { kind: 'completed' } } },
+      { seq: 3, type: 'tool/call', data: { name: 'teamcity_query' } },
+      { seq: 4, type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'new ' }, { type: 'text', text: 'answer' }] } } },
+      { seq: 5, type: 'turn/end', data: { reason: { kind: 'completed' } } },
     ]
-    expect(summarizeTurn(events, 2)).toEqual({ text: 'new answer', ok: true })
+    expect(summarizeTurn(events, 2)).toEqual({ text: 'new answer', ok: true, toolCalls: 1 })
   })
 
   it('reports a failed or empty turn without exposing its internal error', () => {
     expect(summarizeTurn([
       { seq: 4, type: 'turn/end', data: { reason: { kind: 'error', error: { message: 'secret' } } } },
-    ], 4)).toEqual({ text: '', ok: false })
+    ], 4)).toEqual({ text: '', ok: false, toolCalls: 0 })
   })
 })

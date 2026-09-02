@@ -20,6 +20,9 @@ export interface Config {
   dmAllowlist?: string[]
   provider?: string
   model?: string
+  reasoningEffort?: string
+  maxTokens?: number
+  typingReaction?: string
   workspace?: string
   agentPreset?: string
   errorMessage?: string
@@ -31,6 +34,9 @@ export interface SettingsConfig extends Required<Pick<Config,
   appSecret?: string
   provider?: string
   model?: string
+  reasoningEffort?: string
+  maxTokens?: number
+  typingReaction?: string
   workspace?: string
   agentPreset?: string
 }
@@ -51,6 +57,9 @@ export const ConfigSchema: z<Config> = z.object({
   dmAllowlist: z.array(z.string()).default([]),
   provider: z.string(),
   model: z.string(),
+  reasoningEffort: z.string().description('Optional model-specific reasoning effort ID'),
+  maxTokens: z.number().description('Maximum output tokens for each model request'),
+  typingReaction: z.string().description('Reaction emoji shown while a message is being processed; omit to disable'),
   workspace: z.string(),
   agentPreset: z.string(),
   errorMessage: z.string().default(DEFAULT_ERROR_MESSAGE),
@@ -61,6 +70,11 @@ export function resolveSettingsConfig(config: Config): SettingsConfig {
   if (!CREDENTIAL_REF_PATTERN.test(appSecretRef)) throw new TypeError('appSecretRef must be a POSIX environment variable name')
   const errorMessage = config.errorMessage ?? DEFAULT_ERROR_MESSAGE
   if (errorMessage.length > 500) throw new TypeError('errorMessage must not exceed 500 characters')
+  const reasoningEffort = optionalShortValue('reasoningEffort', config.reasoningEffort)
+  const typingReaction = optionalShortValue('typingReaction', config.typingReaction)
+  if (config.maxTokens !== undefined && (!Number.isSafeInteger(config.maxTokens) || config.maxTokens < 1)) {
+    throw new TypeError('maxTokens must be a positive safe integer')
+  }
   return {
     appId: config.appId ?? '',
     appSecretRef,
@@ -73,9 +87,19 @@ export function resolveSettingsConfig(config: Config): SettingsConfig {
     ...(config.appSecret === undefined ? {} : { appSecret: config.appSecret }),
     ...(config.provider === undefined ? {} : { provider: config.provider }),
     ...(config.model === undefined ? {} : { model: config.model }),
+    ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+    ...(config.maxTokens === undefined ? {} : { maxTokens: config.maxTokens }),
+    ...(typingReaction === undefined ? {} : { typingReaction }),
     ...(config.workspace === undefined ? {} : { workspace: config.workspace }),
     ...(config.agentPreset === undefined ? {} : { agentPreset: config.agentPreset }),
   }
+}
+
+function optionalShortValue(name: string, value: string | undefined): string | undefined {
+  const normalized = value?.trim()
+  if (normalized === undefined || normalized === '') return undefined
+  if (normalized.length > 64) throw new TypeError(`${name} must not exceed 64 characters`)
+  return normalized
 }
 
 export function resolveRuntimeConfig(config: SettingsConfig, resolvedSecret?: string): RuntimeConfig {

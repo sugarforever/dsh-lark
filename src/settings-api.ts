@@ -23,15 +23,15 @@ export interface SettingsApiDependencies {
   reconcile(): Promise<void>
 }
 
-type NullableOverride = 'provider' | 'model' | 'workspace' | 'agentPreset'
+type NullableOverride = 'provider' | 'model' | 'reasoningEffort' | 'maxTokens' | 'typingReaction' | 'workspace' | 'agentPreset'
 export type SettingsUpdate = Omit<Config, 'appSecret' | 'appSecretRef' | NullableOverride> & {
   appSecret?: string
   expectedRevision: number
-} & { [K in NullableOverride]?: string | null }
+} & { [K in NullableOverride]?: Exclude<Config[K], undefined> | null }
 
 const SETTINGS_KEYS = new Set([
   'appId', 'domain', 'requireMention', 'dmMode', 'groupAllowlist', 'dmAllowlist',
-  'provider', 'model', 'workspace', 'agentPreset', 'errorMessage', 'appSecret', 'expectedRevision',
+  'provider', 'model', 'reasoningEffort', 'maxTokens', 'typingReaction', 'workspace', 'agentPreset', 'errorMessage', 'appSecret', 'expectedRevision',
 ])
 
 export function createSettingsApi(deps: SettingsApiDependencies) {

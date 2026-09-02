@@ -28,12 +28,13 @@ interface EventLike {
   data: Record<string, unknown>
 }
 
-export interface TurnSummary { text: string; ok: boolean }
+export interface TurnSummary { text: string; ok: boolean; toolCalls: number }
 
 export function summarizeTurn(events: readonly EventLike[], firstSeq: number): TurnSummary {
   let text = ''
   let completed = false
   let failed = false
+  let toolCalls = 0
   for (const event of events) {
     if (event.seq < firstSeq) continue
     if (event.type === 'assistant/message') {
@@ -41,11 +42,12 @@ export function summarizeTurn(events: readonly EventLike[], firstSeq: number): T
       const next = message?.content?.filter(block => block.type === 'text').map(block => block.text ?? '').join('') ?? ''
       if (next !== '') text = next
     }
+    if (event.type === 'tool/call') toolCalls += 1
     if (event.type === 'turn/end') {
       const reason = event.data.reason as { kind?: string } | undefined
       completed = reason?.kind === 'completed'
       failed = reason?.kind === 'error' || reason?.kind === 'cancelled'
     }
   }
-  return { text, ok: completed && !failed && text !== '' }
+  return { text, ok: completed && !failed && text !== '', toolCalls }
 }

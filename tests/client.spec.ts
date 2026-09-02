@@ -120,6 +120,27 @@ describe('LarkSettingsSection', () => {
     expect((await screen.findByRole('status')).textContent).toContain('saved')
   })
 
+  it('loads and submits the processing and model latency controls', async () => {
+    const configured = {
+      ...payload,
+      settings: { ...payload.settings, reasoningEffort: 'low', maxTokens: 8192, typingReaction: 'Typing' },
+    }
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(configured), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(configured), { status: 200 }))
+    vi.stubGlobal('fetch', fetch)
+    render(h(LarkSettingsSection, { t: (key: string) => key }))
+
+    expect(await screen.findByDisplayValue('low')).toBeTruthy()
+    expect(screen.getByDisplayValue('8192')).toBeTruthy()
+    expect(screen.getByDisplayValue('Typing')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'save' }))
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
+    expect(JSON.parse(String((fetch.mock.calls[1]![1] as RequestInit).body))).toMatchObject({
+      reasoningEffort: 'low', maxTokens: 8192, typingReaction: 'Typing',
+    })
+  })
+
   it('preserves the loaded App ID and omits App Secret when only another setting changes', async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(payload), { status: 200 }))
