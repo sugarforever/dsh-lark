@@ -37,6 +37,20 @@ describe('release configuration', () => {
     expect(readme).toContain('**Settings**')
   })
 
+  it('bundles zvec workspace search with a non-destructive upgrade path', async () => {
+    const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+    const patch = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
+    const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8')
+
+    expect(pkg.dependencies['@sugarforever/dsh-zvec-grep']).toBe('^0.1.1')
+    expect(patch).toContain('id: zvec-grep')
+    expect(patch).toContain("name: '@sugarforever/dsh-zvec-grep'")
+    expect(patch.match(/^\s*- id: zvec-grep$/gm)).toHaveLength(1)
+    expect(patch.indexOf('id: zvec-grep')).toBeLessThan(patch.indexOf('id: lark-channel'))
+    expect(readme).toContain('plugin --profile web update')
+    expect(readme).toContain('plugin --profile web remove @sugarforever/dsh-zvec-grep')
+  })
+
   it('declares a Harness web client that contributes the embedded settings section', async () => {
     const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
     expect(pkg.dsh.client).toEqual({

@@ -1,6 +1,6 @@
 {
   "name": "@sugarforever/dsh-lark",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Feishu/Lark WebSocket channel plugin for DeepSeek Harness",
   "repository": {
     "type": "git",
@@ -57,7 +57,8 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1",
-    "@larksuiteoapi/node-sdk": "^1.59.0"
+    "@larksuiteoapi/node-sdk": "^1.59.0",
+    "@sugarforever/dsh-zvec-grep": "^0.1.1"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",

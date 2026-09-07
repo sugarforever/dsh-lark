@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.4
+
+- Install and mount `@sugarforever/dsh-zvec-grep` with the Lark bundle so created and resumed sessions receive automatic background workspace indexing and the `zvec_search` tool.
+- Preserve existing Profile patches, Settings, and Credentials through the documented `dsh plugin --profile web update` flow instead of requiring a remove-and-add cycle.
+- Document the one-time migration for profiles that previously installed `dsh-zvec-grep` as a separate bundle, preventing duplicate `zvec-grep` entries without deleting existing indexes.
+
 ## 0.2.3
 
 - Raise the supported Harness range from `0.1.0-rc.7` through

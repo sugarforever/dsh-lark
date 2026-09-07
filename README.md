@@ -11,6 +11,7 @@
 - 回复会关联原始消息，并保留在原来的话题线程中。
 - 可以通过白名单限制群聊和单聊用户。
 - 可以沿用 Harness 默认模型，也可以为飞书渠道指定模型。
+- 自动为飞书会话使用的 Workspace 建立语义索引，并向 Agent 提供 `zvec_search`。
 
 ## 运行要求
 
@@ -140,6 +141,8 @@ npx @deepseek-ai/dsh plugin --profile web add "$PWD"
 ```
 
 插件安装后保持启用，但在 App ID 和 App Secret 尚未配置时不会建立飞书连接。这样安装完成后就能直接配置，而不必编辑 profile patch。
+
+安装还会带上 `@sugarforever/dsh-zvec-grep`。飞书会话创建或恢复后，对应 Workspace 会在后台建立索引；Agent 可以使用 `zvec_search` 查找措辞不确定、需要跨文件关联或需要综合理解的本地内容。首次索引可能下载默认的本地 embedding 模型，索引保存在 Workspace 的 `.zvec-grep/` 目录中，不会阻塞消息处理。建议把 `.zvec-grep/` 加入项目的 `.gitignore`，避免提交本机索引。
 
 ## 启动 Harness
 
@@ -369,9 +372,19 @@ dmMode: disabled
 升级插件：
 
 ```sh
-npx @deepseek-ai/dsh plugin --profile web remove @sugarforever/dsh-lark
-npx @deepseek-ai/dsh plugin --profile web add @sugarforever/dsh-lark
+npx @deepseek-ai/dsh plugin --profile web update
 ```
+
+`update` 会保留 Profile 的 `cordis.patch.yml`、Harness Settings 和 Credentials，因此已有的 App ID、访问策略、Workspace、模型选择和 App Secret 不需要重新填写。升级后重启 `dsh web`，新的 Host 和 Client bundle 才会一起加载。
+
+如果此前已经把 `@sugarforever/dsh-zvec-grep` 作为独立插件加入同一个 Profile，需要先移除它的独立 bundle，再执行更新，避免同一个 `zvec-grep` entry 被装配两次：
+
+```sh
+npx @deepseek-ai/dsh plugin --profile web remove @sugarforever/dsh-zvec-grep
+npx @deepseek-ai/dsh plugin --profile web update
+```
+
+这个移除操作不会删除 Workspace 中已有的 `.zvec-grep/` 索引；升级后的 Lark bundle 会继续使用它。没有单独安装过 zvec 插件的用户不需要执行这一步。
 
 卸载插件：
 

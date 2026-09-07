@@ -3,3 +3,4 @@ lib/
 dist/
 *.tgz
 .env
+.zvec-grep/
