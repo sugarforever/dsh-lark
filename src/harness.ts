@@ -5,12 +5,21 @@ import type { ConversationMessage } from './conversation.ts'
 import type { DomainName } from './config.ts'
 
 interface AgentLike {
-  session: { id: unknown; seq: number; events: readonly any[] }
+  session: { id: unknown; seq: number } & (
+    | { snapshotEvents(fromSeq?: number): readonly any[] }
+    | { events: readonly any[] }
+  )
   whenIdle(): Promise<void>
   followup(message: ReturnType<typeof createUserMessage>): void
 }
 
 interface AgentHandleLike { agent: AgentLike; dispose(): Promise<void> }
+
+function eventsFrom(session: AgentLike['session'], firstSeq: number): readonly any[] {
+  return 'snapshotEvents' in session
+    ? session.snapshotEvents(firstSeq)
+    : session.events
+}
 
 interface WorkspaceLike {
   path: string
@@ -63,7 +72,7 @@ export class HarnessConversationService {
     }))
     await agent.whenIdle()
     await this.deps.sessions.flush(agent.session)
-    const result = summarizeTurn(agent.session.events, firstSeq)
+    const result = summarizeTurn(eventsFrom(agent.session, firstSeq), firstSeq)
     if (!result.ok) throw new Error('Harness turn did not produce a successful assistant response')
     return result.text
   }

@@ -2,12 +2,16 @@ import { describe, expect, it, vi } from 'vitest'
 import { HarnessConversationService } from '../src/harness.ts'
 
 function fixture() {
-  let seq = 0
   const agents = new Map<string, any>()
   const createHandle = async (sessionId: string) => {
+    let seq = 0
     const events: any[] = []
     const agent = {
-      session: { id: sessionId, get seq() { return seq }, events },
+      session: {
+        id: sessionId,
+        get seq() { return seq },
+        snapshotEvents: (fromSeq = 0) => events.slice(fromSeq),
+      },
       whenIdle: vi.fn(async () => undefined),
       followup: vi.fn((message: any) => {
         events.push({ seq: seq++, type: 'turn/start', data: {} })

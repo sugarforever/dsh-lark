@@ -1,26 +1,14 @@
 import * as React from 'react'
 import { Button, Input, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { LarkSettingsValue, RuntimeStatusInfo, SettingsChannel } from './index.ts'
 
 type Translate = (key: string) => string
-type RuntimeState = 'unconfigured' | 'connecting' | 'connected' | 'error' | 'stopped'
+export type RuntimeState = 'unconfigured' | 'connecting' | 'connected' | 'error' | 'stopped'
 
-interface SettingsPayload {
-  revision: number
-  settings: {
-    appId: string
-    domain: 'feishu' | 'lark'
-    requireMention: boolean
-    dmMode: 'open' | 'allowlist' | 'disabled'
-    groupAllowlist: string[]
-    dmAllowlist: string[]
-    provider?: string
-    model?: string
-    workspace?: string
-    agentPreset?: string
-    errorMessage: string
-  }
-  credential: { configured: boolean; source?: string; writable: boolean }
-  runtime: { state: RuntimeState; message?: string }
+export interface CredentialInfo {
+  configured: boolean
+  source?: string
+  writable: boolean
 }
 
 interface FormState {
@@ -59,6 +47,7 @@ export interface ModelCatalog {
 interface LarkSettingsSectionProps {
   t: Translate
   loadModels?: () => Promise<ModelCatalog>
+  channel: SettingsChannel
 }
 
 const EMPTY_FORM: FormState = {
@@ -66,45 +55,74 @@ const EMPTY_FORM: FormState = {
   groupAllowlist: '', dmAllowlist: '', provider: '', model: '', workspace: '', agentPreset: '', errorMessage: '',
 }
 
-export function LarkSettingsSection({ t, loadModels }: LarkSettingsSectionProps): JSX.Element {
-  const [payload, setPayload] = React.useState<SettingsPayload | null>(null)
+function adoptForm(next: LarkSettingsValue): FormState {
+  return {
+    appId: next.appId,
+    appSecret: '',
+    domain: next.domain,
+    requireMention: next.requireMention,
+    dmMode: next.dmMode,
+    groupAllowlist: next.groupAllowlist.join('\n'),
+    dmAllowlist: next.dmAllowlist.join('\n'),
+    provider: next.provider ?? '',
+    model: next.model ?? '',
+    workspace: next.workspace ?? '',
+    agentPreset: next.agentPreset ?? '',
+    errorMessage: next.errorMessage,
+  }
+}
+
+export function LarkSettingsSection({ t, loadModels, channel }: LarkSettingsSectionProps): JSX.Element {
+  const [settings, setSettings] = React.useState<LarkSettingsValue | null>(null)
+  const [credential, setCredential] = React.useState<CredentialInfo | undefined>()
+  const [runtime, setRuntime] = React.useState<RuntimeStatusInfo>({ state: 'connecting' })
   const [form, setForm] = React.useState<FormState>(EMPTY_FORM)
   const [modelCatalog, setModelCatalog] = React.useState<ModelCatalog | null>(null)
   const [modelCatalogFailed, setModelCatalogFailed] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
   const [notice, setNotice] = React.useState('')
+  const busyRef = React.useRef(false)
 
-  const adopt = React.useCallback((next: SettingsPayload) => {
-    setPayload(next)
-    setForm({
-      appId: next.settings.appId,
-      appSecret: '',
-      domain: next.settings.domain,
-      requireMention: next.settings.requireMention,
-      dmMode: next.settings.dmMode,
-      groupAllowlist: next.settings.groupAllowlist.join('\n'),
-      dmAllowlist: next.settings.dmAllowlist.join('\n'),
-      provider: next.settings.provider ?? '',
-      model: next.settings.model ?? '',
-      workspace: next.settings.workspace ?? '',
-      agentPreset: next.settings.agentPreset ?? '',
-      errorMessage: next.settings.errorMessage,
-    })
-  }, [])
+  const writable = channel.getSettings()?.writable ?? true
 
+  // Reactive settings section: initial read + adopt on every committed change
+  // (own saves land here through settings/document-updated).
   React.useEffect(() => {
-    const controller = new AbortController()
-    fetch('/dsh-lark/settings', { headers: { accept: 'application/json' }, cache: 'no-store', signal: controller.signal })
-      .then(async response => {
-        const value = await response.json() as SettingsPayload & { error?: string }
-        if (!response.ok) throw new Error(value.error ?? t('loadFailed'))
-        adopt(value)
-      })
-      .catch(error => {
-        if (!controller.signal.aborted) setNotice(error instanceof Error ? error.message : String(error))
-      })
-    return () => controller.abort()
-  }, [adopt, t])
+    const snapshot = channel.getSettings()
+    if (snapshot?.value !== undefined) {
+      setSettings(snapshot.value)
+      setForm(adoptForm(snapshot.value))
+    }
+    return channel.subscribeSettings(() => {
+      const next = channel.getSettings()
+      const value = next?.value
+      if (value !== undefined) {
+        setSettings(value)
+        setForm(current => busyRef.current ? current : adoptForm(value))
+      }
+    })
+  }, [channel])
+
+  // Credential badge + runtime status; keep both fresh on external changes.
+  React.useEffect(() => {
+    let active = true
+    const refresh = () => {
+      channel.describeCredential().then(value => {
+        if (active) setCredential(value)
+      }).catch(() => undefined)
+      channel.status().then(value => {
+        if (active) setRuntime(value)
+      }).catch(() => undefined)
+    }
+    refresh()
+    const unsubscribe = channel.subscribeCredential(() => {
+      refresh()
+    })
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [channel, settings?.appSecretRef])
 
   React.useEffect(() => {
     if (loadModels === undefined) return
@@ -125,10 +143,11 @@ export function LarkSettingsSection({ t, loadModels }: LarkSettingsSectionProps)
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault()
+    busyRef.current = true
     setBusy(true)
     setNotice(t('saving'))
     const body: Record<string, unknown> = {
-      expectedRevision: payload?.revision,
+      expectedRevision: channel.getSettings()?.revision ?? 0,
       appId: form.appId.trim(), domain: form.domain, requireMention: form.requireMention, dmMode: form.dmMode,
       groupAllowlist: lines(form.groupAllowlist), dmAllowlist: lines(form.dmAllowlist), errorMessage: form.errorMessage,
     }
@@ -137,37 +156,35 @@ export function LarkSettingsSection({ t, loadModels }: LarkSettingsSectionProps)
     }
     if (form.appSecret !== '') body.appSecret = form.appSecret
     try {
-      const response = await fetch('/dsh-lark/settings', {
-        method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify(body),
-      })
-      const value = await response.json() as SettingsPayload & { error?: string }
-      if (!response.ok) throw new Error(value.error ?? t('saveFailed'))
-      adopt(value)
+      const status = await channel.apply(body)
+      busyRef.current = false
+      setRuntime(status)
+      setBusy(false)
       setNotice(t('saved'))
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error))
-    } finally {
+      busyRef.current = false
       setBusy(false)
+      setNotice(error instanceof Error ? error.message : String(error))
     }
   }
 
   const removeSecret = async () => {
+    busyRef.current = true
     setBusy(true)
     setNotice(t('removing'))
     try {
-      const response = await fetch('/dsh-lark/settings', { method: 'DELETE', headers: { accept: 'application/json' } })
-      const value = await response.json() as SettingsPayload & { error?: string }
-      if (!response.ok) throw new Error(value.error ?? t('removeFailed'))
-      adopt(value)
+      await channel.removeSecret()
+      busyRef.current = false
+      setBusy(false)
       setNotice(t('removed'))
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error))
-    } finally {
+      busyRef.current = false
       setBusy(false)
+      setNotice(error instanceof Error ? error.message : String(error))
     }
   }
 
-  const runtimeState = payload?.runtime.state ?? 'connecting'
+  const runtimeState: RuntimeState = runtime.state
   const dotState = runtimeState === 'connected' ? 'done' : runtimeState === 'error' ? 'error' : runtimeState === 'connecting' ? 'ongoing' : 'warning'
   const providerGroup = modelCatalog?.groups.find(group => group.id === form.provider)
   const providerIsUnknown = form.provider !== '' && modelCatalog !== null && providerGroup === undefined
@@ -186,26 +203,26 @@ export function LarkSettingsSection({ t, loadModels }: LarkSettingsSectionProps)
       </div>
     </header>
 
-    {payload === null && notice === '' ? <p className="dsh-lark-loading">{t('loading')}</p> : null}
-    {payload !== null ? <form onSubmit={save}>
+    {settings === null ? <p className="dsh-lark-loading">{t('loading')}</p> : null}
+    {settings !== null ? <form onSubmit={save}>
       <div className="dsh-lark-card">
         <h3>{t('application')}</h3>
         <div className="dsh-lark-grid">
           <label><span>{t('appId')}</span><Input aria-label="appId" value={form.appId} onChange={event => update('appId', event.target.value)} autoComplete="off" /></label>
           <label><span>{t('domain')}</span><select aria-label="domain" value={form.domain} onChange={event => update('domain', event.target.value as FormState['domain'])}><option value="feishu">Feishu</option><option value="lark">Lark</option></select></label>
         </div>
-        <label><span>{t('appSecret')}</span><Input aria-label="appSecret" type="password" disabled={!payload.credential.writable} value={form.appSecret} onChange={event => update('appSecret', event.target.value)} autoComplete="new-password" placeholder={t('secretPlaceholder')} /></label>
+        <label><span>{t('appSecret')}</span><Input aria-label="appSecret" type="password" disabled={credential?.writable !== true} value={form.appSecret} onChange={event => update('appSecret', event.target.value)} autoComplete="new-password" placeholder={t('secretPlaceholder')} /></label>
         <div
           className="dsh-lark-credential"
-          aria-label={payload.credential.configured ? t('credentialConfigured') : t('credentialMissing')}
-          data-state={payload.credential.configured ? 'configured' : 'missing'}
+          aria-label={credential?.configured ? t('credentialConfigured') : t('credentialMissing')}
+          data-state={credential?.configured ? 'configured' : 'missing'}
         >
           <span className="dsh-lark-credential-badge">
             <span className="dsh-lark-credential-dot" aria-hidden="true" />
-            {payload.credential.configured ? t('credentialConfigured') : t('credentialMissing')}
+            {credential?.configured ? t('credentialConfigured') : t('credentialMissing')}
           </span>
-          {payload.credential.source !== undefined ? <code>{payload.credential.source}</code> : null}
-          {!payload.credential.writable ? <span>{t('readOnly')}</span> : null}
+          {credential?.source !== undefined ? <code>{credential.source}</code> : null}
+          {credential?.writable === false ? <span>{t('readOnly')}</span> : null}
         </div>
       </div>
 
@@ -239,11 +256,11 @@ export function LarkSettingsSection({ t, loadModels }: LarkSettingsSectionProps)
       </div>
 
       <footer className="dsh-lark-actions">
-        <Button variant="primary" type="submit" disabled={busy}>{busy ? t('saving') : t('save')}</Button>
-        <Button variant="outline" type="button" disabled={busy || !payload.credential.configured || !payload.credential.writable} onClick={removeSecret}>{t('removeSecret')}</Button>
+        <Button variant="primary" type="submit" disabled={busy || !writable}>{busy ? t('saving') : t('save')}</Button>
+        <Button variant="outline" type="button" disabled={busy || !credential?.configured || credential?.writable !== true} onClick={removeSecret}>{t('removeSecret')}</Button>
         <span role="status" aria-live="polite">{notice}</span>
       </footer>
-      {payload.runtime.message !== undefined ? <p className="dsh-lark-detail">{payload.runtime.message}</p> : null}
+      {runtime.message !== undefined ? <p className="dsh-lark-detail">{runtime.message}</p> : null}
     </form> : null}
   </section>
 }

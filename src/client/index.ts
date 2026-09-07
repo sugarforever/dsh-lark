@@ -1,8 +1,12 @@
 import { createElement as h } from 'react'
-import { LarkSettingsSection, type ModelCatalog } from './LarkSettingsSection.tsx'
+import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
+import { LarkSettingsSection, type CredentialInfo, type ModelCatalog, type RuntimeState } from './LarkSettingsSection.tsx'
 import { CLIENT_CSS } from './styles.ts'
 
 const NS = 'dsh-lark'
+const NAMESPACE = 'lark-channel'
+const SECRET_REF = 'DSH_LARK_APP_SECRET'
+
 const dictionaries = {
   zh: {
     nav: '飞书与 Lark', title: '飞书与 Lark', subtitle: '配置消息渠道，保存后无需重启 Harness', runtimeStatus: '运行状态', loading: '正在读取配置......',
@@ -20,6 +24,48 @@ const dictionaries = {
   },
 }
 
+/** The resolved lark-channel settings section as the client renders it. */
+export interface LarkSettingsValue {
+  appId: string
+  domain: 'feishu' | 'lark'
+  requireMention: boolean
+  dmMode: 'open' | 'allowlist' | 'disabled'
+  groupAllowlist: string[]
+  dmAllowlist: string[]
+  provider?: string
+  model?: string
+  workspace?: string
+  agentPreset?: string
+  errorMessage: string
+  appSecretRef: string
+}
+
+export interface RuntimeStatusInfo {
+  state: RuntimeState
+  message?: string
+}
+
+/** Everything the settings page needs, assembled over official Harness channels. */
+export interface SettingsChannel {
+  /** Reactive settings section snapshot; undefined until the first acceptance. */
+  getSettings(): SettingsScopeSnapshot<LarkSettingsValue> | undefined
+  subscribeSettings(onChange: () => void): () => void
+  describeCredential(): Promise<CredentialInfo>
+  subscribeCredential(onChange: () => void): () => void
+  status(): Promise<RuntimeStatusInfo>
+  /** Atomic apply; resolves with the post-reconcile runtime status. */
+  apply(input: Record<string, unknown>): Promise<RuntimeStatusInfo>
+  /** Remove the stored App Secret through Harness Credentials. */
+  removeSecret(): Promise<void>
+}
+
+interface RpcResult<T> {
+  rpcId: string
+  result: { ok: true; value: T } | { ok: false; error: { code: string; message: string } }
+}
+
+interface CredentialView { configured: boolean; source?: string; writable: boolean }
+
 interface ClientContext {
   effect(callback: () => unknown, label?: string): void
   locale: {
@@ -29,12 +75,20 @@ interface ClientContext {
   connection: {
     api: {
       llm: {
-        models(payload: Record<string, never>): Promise<{
-          rpcId: string
-          result: { ok: true; value: ModelCatalog } | { ok: false; error: { code: string; message: string } }
-        }>
+        models(payload: Record<string, never>): Promise<RpcResult<ModelCatalog>>
+      }
+      credentials: {
+        describe(payload: { refs: string[] }): Promise<RpcResult<{ credentials: Record<string, CredentialView> }>>
+        set(payload: { ref: string; value: string }): Promise<RpcResult<Record<string, never>>>
+        unset(payload: { ref: string }): Promise<RpcResult<Record<string, never>>>
       }
     }
+  }
+  settingsScope: {
+    bind(spec: { namespace: string }): SettingsScope<LarkSettingsValue>
+  }
+  remote: {
+    $on(event: 'credentials/updated' | 'credentials/reference-updated', listener: (ref: string) => void): () => void
   }
   slots: {
     inject(slot: string, register: () => unknown): void
@@ -43,7 +97,54 @@ interface ClientContext {
 }
 
 export const name = 'dsh-lark'
-export const inject = ['slots', 'locale', 'connection']
+export const inject = ['slots', 'locale', 'connection', 'settingsScope', 'remote']
+
+function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  return fetch(url, { headers: { accept: 'application/json' }, cache: 'no-store', ...init }).then(async response => {
+    const value = await response.json() as T & { error?: string }
+    if (!response.ok) throw new Error(value.error ?? `HTTP ${response.status}`)
+    return value
+  })
+}
+
+function buildChannel(ctx: ClientContext): SettingsChannel {
+  const scope = ctx.settingsScope.bind({ namespace: NAMESPACE })
+  const credentialRef = () => scope.getSnapshot()?.value?.appSecretRef ?? SECRET_REF
+  const unwrap = <T,>(response: RpcResult<T>): T => {
+    if (!response.result.ok) throw new Error(`${response.result.error.code}: ${response.result.error.message}`)
+    return response.result.value
+  }
+  return {
+    getSettings: () => scope.getSnapshot(),
+    subscribeSettings: onChange => scope.subscribe(onChange),
+    describeCredential: async () => {
+      const ref = credentialRef()
+      const value = unwrap(await ctx.connection.api.credentials.describe({ refs: [ref] }))
+      return value.credentials[ref] ?? { configured: false, writable: true }
+    },
+    subscribeCredential: onChange => {
+      const listener = (ref: string) => {
+        if (ref === credentialRef()) onChange()
+      }
+      const disposeLegacy = ctx.remote.$on('credentials/updated', listener)
+      const disposeCurrent = ctx.remote.$on('credentials/reference-updated', listener)
+      return () => {
+        disposeLegacy()
+        disposeCurrent()
+      }
+    },
+    status: () => fetchJson<RuntimeStatusInfo>('/dsh-lark/status'),
+    apply: async input => {
+      const value = await fetchJson<{ status: RuntimeStatusInfo }>('/dsh-lark/apply', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input),
+      })
+      return value.status
+    },
+    removeSecret: async () => {
+      await ctx.connection.api.credentials.unset({ ref: credentialRef() })
+    },
+  }
+}
 
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, dictionaries), 'dsh-lark: client dictionaries')
@@ -71,5 +172,5 @@ export function apply(ctx: ClientContext): void {
     order: 45,
     label: () => t('nav'),
     locale: NS,
-  }, () => h(LarkSettingsSection, { t, loadModels })))
+  }, () => h(LarkSettingsSection, { t, loadModels, channel: buildChannel(ctx) })))
 }

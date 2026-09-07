@@ -1,27 +1,36 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
-export const SETTINGS_PATH = '/dsh-lark/settings'
+export const STATUS_PATH = '/dsh-lark/status'
+export const APPLY_PATH = '/dsh-lark/apply'
 
 export interface SettingsApiLike {
-  describe(): Promise<unknown>
-  update(input: any): Promise<unknown>
-  unsetSecret(): Promise<unknown>
+  status(): unknown
+  apply(input: unknown): Promise<unknown>
 }
 
-export async function handleSettingsRequest(req: IncomingMessage, res: ServerResponse, api: SettingsApiLike): Promise<void> {
-  if (!isLoopback(req.socket.remoteAddress)) return send(res, 403, { error: 'DSH Lark settings are available only from localhost' })
-  try {
-    if (req.method === 'GET') return send(res, 200, await api.describe())
-    if ((req.method === 'POST' || req.method === 'DELETE') && !isSameOrigin(req)) {
-      return send(res, 403, { error: 'untrusted origin' })
-    }
-    if (req.method === 'POST') return send(res, 200, await api.update(JSON.parse(await readBody(req))))
-    if (req.method === 'DELETE') return send(res, 200, await api.unsetSecret())
-    res.setHeader('allow', 'GET, POST, DELETE')
-    send(res, 405, { error: 'method not allowed' })
-  } catch (error) {
-    send(res, 400, { error: error instanceof Error ? error.message : String(error) })
+export async function handleStatusRequest(req: IncomingMessage, res: ServerResponse, api: SettingsApiLike): Promise<void> {
+  if (!isLoopback(req.socket.remoteAddress)) return send(res, 403, { error: 'DSH Lark status is available only from localhost' })
+  if (req.method !== 'GET') {
+    res.setHeader('allow', 'GET')
+    return send(res, 405, { error: 'method not allowed' })
   }
+  send(res, 200, api.status())
+}
+
+export async function handleApplyRequest(req: IncomingMessage, res: ServerResponse, api: SettingsApiLike): Promise<void> {
+  if (!isLoopback(req.socket.remoteAddress)) return send(res, 403, { error: 'DSH Lark settings are available only from localhost' })
+  if (req.method === 'GET') return send(res, 200, api.status())
+  if (req.method === 'POST' && !isSameOrigin(req)) return send(res, 403, { error: 'untrusted origin' })
+  if (req.method === 'POST') {
+    try {
+      const input = JSON.parse(await readBody(req))
+      return send(res, 200, await api.apply(input))
+    } catch (error) {
+      return send(res, 400, { error: error instanceof Error ? error.message : String(error) })
+    }
+  }
+  res.setHeader('allow', 'GET, POST')
+  send(res, 405, { error: 'method not allowed' })
 }
 
 function isLoopback(address?: string): boolean {

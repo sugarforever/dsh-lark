@@ -45,45 +45,66 @@ const EMPTY_FORM = {
 	agentPreset: "",
 	errorMessage: ""
 };
-function LarkSettingsSection({ t, loadModels }) {
-	const [payload, setPayload] = react.useState(null);
+function adoptForm(next) {
+	return {
+		appId: next.appId,
+		appSecret: "",
+		domain: next.domain,
+		requireMention: next.requireMention,
+		dmMode: next.dmMode,
+		groupAllowlist: next.groupAllowlist.join("\n"),
+		dmAllowlist: next.dmAllowlist.join("\n"),
+		provider: next.provider ?? "",
+		model: next.model ?? "",
+		workspace: next.workspace ?? "",
+		agentPreset: next.agentPreset ?? "",
+		errorMessage: next.errorMessage
+	};
+}
+function LarkSettingsSection({ t, loadModels, channel }) {
+	const [settings, setSettings] = react.useState(null);
+	const [credential, setCredential] = react.useState();
+	const [runtime, setRuntime] = react.useState({ state: "connecting" });
 	const [form, setForm] = react.useState(EMPTY_FORM);
 	const [modelCatalog, setModelCatalog] = react.useState(null);
 	const [modelCatalogFailed, setModelCatalogFailed] = react.useState(false);
 	const [busy, setBusy] = react.useState(false);
 	const [notice, setNotice] = react.useState("");
-	const adopt = react.useCallback((next) => {
-		setPayload(next);
-		setForm({
-			appId: next.settings.appId,
-			appSecret: "",
-			domain: next.settings.domain,
-			requireMention: next.settings.requireMention,
-			dmMode: next.settings.dmMode,
-			groupAllowlist: next.settings.groupAllowlist.join("\n"),
-			dmAllowlist: next.settings.dmAllowlist.join("\n"),
-			provider: next.settings.provider ?? "",
-			model: next.settings.model ?? "",
-			workspace: next.settings.workspace ?? "",
-			agentPreset: next.settings.agentPreset ?? "",
-			errorMessage: next.settings.errorMessage
-		});
-	}, []);
+	const busyRef = react.useRef(false);
+	const writable = channel.getSettings()?.writable ?? true;
 	react.useEffect(() => {
-		const controller = new AbortController();
-		fetch("/dsh-lark/settings", {
-			headers: { accept: "application/json" },
-			cache: "no-store",
-			signal: controller.signal
-		}).then(async (response) => {
-			const value = await response.json();
-			if (!response.ok) throw new Error(value.error ?? t("loadFailed"));
-			adopt(value);
-		}).catch((error) => {
-			if (!controller.signal.aborted) setNotice(error instanceof Error ? error.message : String(error));
+		const snapshot = channel.getSettings();
+		if (snapshot?.value !== void 0) {
+			setSettings(snapshot.value);
+			setForm(adoptForm(snapshot.value));
+		}
+		return channel.subscribeSettings(() => {
+			const value = channel.getSettings()?.value;
+			if (value !== void 0) {
+				setSettings(value);
+				setForm((current) => busyRef.current ? current : adoptForm(value));
+			}
 		});
-		return () => controller.abort();
-	}, [adopt, t]);
+	}, [channel]);
+	react.useEffect(() => {
+		let active = true;
+		const refresh = () => {
+			channel.describeCredential().then((value) => {
+				if (active) setCredential(value);
+			}).catch(() => void 0);
+			channel.status().then((value) => {
+				if (active) setRuntime(value);
+			}).catch(() => void 0);
+		};
+		refresh();
+		const unsubscribe = channel.subscribeCredential(() => {
+			refresh();
+		});
+		return () => {
+			active = false;
+			unsubscribe();
+		};
+	}, [channel, settings?.appSecretRef]);
 	react.useEffect(() => {
 		if (loadModels === void 0) return;
 		let active = true;
@@ -104,10 +125,11 @@ function LarkSettingsSection({ t, loadModels }) {
 	const lines = (value) => value.split(/\n/u).map((item) => item.trim()).filter(Boolean);
 	const save = async (event) => {
 		event.preventDefault();
+		busyRef.current = true;
 		setBusy(true);
 		setNotice(t("saving"));
 		const body = {
-			expectedRevision: payload?.revision,
+			expectedRevision: channel.getSettings()?.revision ?? 0,
 			appId: form.appId.trim(),
 			domain: form.domain,
 			requireMention: form.requireMention,
@@ -124,43 +146,33 @@ function LarkSettingsSection({ t, loadModels }) {
 		]) body[key] = form[key].trim() === "" ? null : form[key].trim();
 		if (form.appSecret !== "") body.appSecret = form.appSecret;
 		try {
-			const response = await fetch("/dsh-lark/settings", {
-				method: "POST",
-				headers: {
-					accept: "application/json",
-					"content-type": "application/json"
-				},
-				body: JSON.stringify(body)
-			});
-			const value = await response.json();
-			if (!response.ok) throw new Error(value.error ?? t("saveFailed"));
-			adopt(value);
+			const status = await channel.apply(body);
+			busyRef.current = false;
+			setRuntime(status);
+			setBusy(false);
 			setNotice(t("saved"));
 		} catch (error) {
-			setNotice(error instanceof Error ? error.message : String(error));
-		} finally {
+			busyRef.current = false;
 			setBusy(false);
+			setNotice(error instanceof Error ? error.message : String(error));
 		}
 	};
 	const removeSecret = async () => {
+		busyRef.current = true;
 		setBusy(true);
 		setNotice(t("removing"));
 		try {
-			const response = await fetch("/dsh-lark/settings", {
-				method: "DELETE",
-				headers: { accept: "application/json" }
-			});
-			const value = await response.json();
-			if (!response.ok) throw new Error(value.error ?? t("removeFailed"));
-			adopt(value);
+			await channel.removeSecret();
+			busyRef.current = false;
+			setBusy(false);
 			setNotice(t("removed"));
 		} catch (error) {
-			setNotice(error instanceof Error ? error.message : String(error));
-		} finally {
+			busyRef.current = false;
 			setBusy(false);
+			setNotice(error instanceof Error ? error.message : String(error));
 		}
 	};
-	const runtimeState = payload?.runtime.state ?? "connecting";
+	const runtimeState = runtime.state;
 	const dotState = runtimeState === "connected" ? "done" : runtimeState === "error" ? "error" : runtimeState === "connecting" ? "ongoing" : "warning";
 	const providerGroup = modelCatalog?.groups.find((group) => group.id === form.provider);
 	const providerIsUnknown = form.provider !== "" && modelCatalog !== null && providerGroup === void 0;
@@ -184,11 +196,11 @@ function LarkSettingsSection({ t, loadModels }) {
 					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: runtimeState })]
 				})]
 			}),
-			payload === null && notice === "" ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+			settings === null ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
 				className: "dsh-lark-loading",
 				children: t("loading")
 			}) : null,
-			payload !== null ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("form", {
+			settings !== null ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("form", {
 				onSubmit: save,
 				children: [
 					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
@@ -218,7 +230,7 @@ function LarkSettingsSection({ t, loadModels }) {
 							/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("label", { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("appSecret") }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)(__deepseek_ai_dsh_client_ui_primitives.Input, {
 								"aria-label": "appSecret",
 								type: "password",
-								disabled: !payload.credential.writable,
+								disabled: credential?.writable !== true,
 								value: form.appSecret,
 								onChange: (event) => update("appSecret", event.target.value),
 								autoComplete: "new-password",
@@ -226,18 +238,18 @@ function LarkSettingsSection({ t, loadModels }) {
 							})] }),
 							/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 								className: "dsh-lark-credential",
-								"aria-label": payload.credential.configured ? t("credentialConfigured") : t("credentialMissing"),
-								"data-state": payload.credential.configured ? "configured" : "missing",
+								"aria-label": credential?.configured ? t("credentialConfigured") : t("credentialMissing"),
+								"data-state": credential?.configured ? "configured" : "missing",
 								children: [
 									/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 										className: "dsh-lark-credential-badge",
 										children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 											className: "dsh-lark-credential-dot",
 											"aria-hidden": "true"
-										}), payload.credential.configured ? t("credentialConfigured") : t("credentialMissing")]
+										}), credential?.configured ? t("credentialConfigured") : t("credentialMissing")]
 									}),
-									payload.credential.source !== void 0 ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("code", { children: payload.credential.source }) : null,
-									!payload.credential.writable ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("readOnly") }) : null
+									credential?.source !== void 0 ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("code", { children: credential.source }) : null,
+									credential?.writable === false ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("readOnly") }) : null
 								]
 							})
 						]
@@ -378,13 +390,13 @@ function LarkSettingsSection({ t, loadModels }) {
 							/* @__PURE__ */ (0, react_jsx_runtime.jsx)(__deepseek_ai_dsh_client_ui_primitives.Button, {
 								variant: "primary",
 								type: "submit",
-								disabled: busy,
+								disabled: busy || !writable,
 								children: busy ? t("saving") : t("save")
 							}),
 							/* @__PURE__ */ (0, react_jsx_runtime.jsx)(__deepseek_ai_dsh_client_ui_primitives.Button, {
 								variant: "outline",
 								type: "button",
-								disabled: busy || !payload.credential.configured || !payload.credential.writable,
+								disabled: busy || !credential?.configured || credential?.writable !== true,
 								onClick: removeSecret,
 								children: t("removeSecret")
 							}),
@@ -395,9 +407,9 @@ function LarkSettingsSection({ t, loadModels }) {
 							})
 						]
 					}),
-					payload.runtime.message !== void 0 ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+					runtime.message !== void 0 ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
 						className: "dsh-lark-detail",
-						children: payload.runtime.message
+						children: runtime.message
 					}) : null
 				]
 			}) : null
@@ -422,6 +434,8 @@ const CLIENT_CSS = `
 //#endregion
 //#region src/client/index.ts
 const NS = "dsh-lark";
+const NAMESPACE = "lark-channel";
+const SECRET_REF = "DSH_LARK_APP_SECRET";
 const dictionaries = {
 	zh: {
 		nav: "飞书与 Lark",
@@ -514,8 +528,62 @@ const name = "dsh-lark";
 const inject = [
 	"slots",
 	"locale",
-	"connection"
+	"connection",
+	"settingsScope",
+	"remote"
 ];
+function fetchJson(url, init) {
+	return fetch(url, {
+		headers: { accept: "application/json" },
+		cache: "no-store",
+		...init
+	}).then(async (response) => {
+		const value = await response.json();
+		if (!response.ok) throw new Error(value.error ?? `HTTP ${response.status}`);
+		return value;
+	});
+}
+function buildChannel(ctx) {
+	const scope = ctx.settingsScope.bind({ namespace: NAMESPACE });
+	const credentialRef = () => scope.getSnapshot()?.value?.appSecretRef ?? SECRET_REF;
+	const unwrap = (response) => {
+		if (!response.result.ok) throw new Error(`${response.result.error.code}: ${response.result.error.message}`);
+		return response.result.value;
+	};
+	return {
+		getSettings: () => scope.getSnapshot(),
+		subscribeSettings: (onChange) => scope.subscribe(onChange),
+		describeCredential: async () => {
+			const ref = credentialRef();
+			return unwrap(await ctx.connection.api.credentials.describe({ refs: [ref] })).credentials[ref] ?? {
+				configured: false,
+				writable: true
+			};
+		},
+		subscribeCredential: (onChange) => {
+			const listener = (ref) => {
+				if (ref === credentialRef()) onChange();
+			};
+			const disposeLegacy = ctx.remote.$on("credentials/updated", listener);
+			const disposeCurrent = ctx.remote.$on("credentials/reference-updated", listener);
+			return () => {
+				disposeLegacy();
+				disposeCurrent();
+			};
+		},
+		status: () => fetchJson("/dsh-lark/status"),
+		apply: async (input) => {
+			return (await fetchJson("/dsh-lark/apply", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(input)
+			})).status;
+		},
+		removeSecret: async () => {
+			await ctx.connection.api.credentials.unset({ ref: credentialRef() });
+		}
+	};
+}
 function apply(ctx) {
 	ctx.effect(() => ctx.locale.register(NS, dictionaries), "dsh-lark: client dictionaries");
 	ctx.effect(() => {
@@ -544,7 +612,8 @@ function apply(ctx) {
 		locale: NS
 	}, () => (0, react.createElement)(LarkSettingsSection, {
 		t,
-		loadModels
+		loadModels,
+		channel: buildChannel(ctx)
 	})));
 }
 

@@ -8,14 +8,9 @@
 
 - 支持飞书中国版和国际版 Lark。
 - 使用 WebSocket 长连接接收事件，无需公网回调地址。
-- 单聊和普通群聊按聊天复用 Harness Session。
-- 话题群按线程使用独立 Harness Session。
 - 回复会关联原始消息，并保留在原来的话题线程中。
-- 群聊默认需要 @机器人，单聊默认开放。
 - 可以通过白名单限制群聊和单聊用户。
 - 可以沿用 Harness 默认模型，也可以为飞书渠道指定模型。
-- 会话标识经过 SHA-256 处理，不会把原始 `chat_id` 写进 Session ID。
-- Harness 内部错误不会直接发送给飞书用户。
 
 ## 运行要求
 
@@ -120,7 +115,11 @@ npx @deepseek-ai/dsh web
 npx @deepseek-ai/dsh plugin --profile web add @sugarforever/dsh-lark
 ```
 
-Harness 的 Agent、Session、Settings 等服务由 Profile Bundle 在运行时提供。插件将这些包声明为 optional peer，以适配 DSH 的 Bundle 加载机制；它不会在 Profile 中重复安装另一套 Harness。兼容范围从 `0.1.0-rc.6` 开始，并通过 CI 持续验证最新发布的 Harness 版本，因此升级到后续 RC 通常不需要重新发布插件。
+Harness 的 Agent、Session、Settings 等服务由 Profile Bundle 在运行时提供。
+插件将这些包声明为 optional peer，以适配 DSH 的 Bundle 加载机制；它不会在
+Profile 中重复安装另一套 Harness。从 `0.2.3` 起兼容 `0.1.0-rc.7`、
+`0.1.2-rc.1` 及稳定的 `0.1.x` 版本，并通过 CI 持续验证最新发布的 Harness
+版本，因此升级到后续 RC 通常不需要重新发布插件。
 
 查看已经安装的插件：
 
@@ -324,7 +323,7 @@ dmMode: disabled
 - 插件不会记录 App ID 和 App Secret。
 - Agent 的异常堆栈不会发送给飞书用户。
 - 用户只能看到 `errorMessage` 中配置的失败提示。
-- Session ID 不包含原始飞书 `chat_id` 或 `thread_id`。
+- 会话标识经过 SHA-256 处理，Session ID 不包含原始飞书 `chat_id` 或 `thread_id`。
 - 一个飞书应用不宜同时运行多个长连接消费者。平台可能在连接之间分发事件，导致单个实例只能收到部分消息。
 
 ## 常见问题

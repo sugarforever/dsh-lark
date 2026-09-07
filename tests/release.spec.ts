@@ -14,6 +14,20 @@ describe('release configuration', () => {
     })
   })
 
+  it('does not import the settingsNamespace helper missing from newer DSH releases', async () => {
+    const source = await readFile(new URL('../src/index.ts', import.meta.url), 'utf8')
+    expect(source).not.toContain('settingsNamespace')
+  })
+
+  it('declares peer ranges that include the supported DSH 0.1.2 prerelease', async () => {
+    const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+    const dshPeers = Object.entries(pkg.peerDependencies as Record<string, string>)
+      .filter(([name]) => name.startsWith('@deepseek-ai/dsh-'))
+
+    expect(dshPeers.length).toBeGreaterThan(0)
+    for (const [, range] of dshPeers) expect(range).toContain('^0.1.2-rc.1')
+  })
+
   it('ships an enabled, credential-reference based settings entry', async () => {
     const patch = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
     const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8')

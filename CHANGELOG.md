@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.3
+
+- Raise the supported Harness range from `0.1.0-rc.7` through
+  `0.1.2-rc.1` and use the official settings channels those versions provide.
+- Stop importing the `settingsNamespace` runtime helper, which is absent from
+  newer settings packages and prevented DSH from starting.
+- Read the `lark-channel` settings section reactively through the client
+  `settingsScope` service instead of a custom describe route; the page now
+  tracks external edits and reconnects automatically.
+- Read and remove the App Secret through the official Harness `credentials`
+  RPC instead of the plugin's own HTTP surface.
+- Follow a custom `appSecretRef` when describing or removing the App Secret,
+  and refresh its status for both legacy and current credential update events.
+- Keep only two plugin-owned HTTP actions: `GET /dsh-lark/status` (runtime
+  status, which is not a settings field) and `POST /dsh-lark/apply` (atomic
+  save that commits settings plus an optional secret in one reconcile).
+- Drop the legacy `describe` route and the credentials describe/unset
+  handling from the host settings API.
 ## 0.2.2
 
 - Restore npm 12 lockfile entries required for clean Linux CI installs.

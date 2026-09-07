@@ -3,7 +3,7 @@ import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '@deepseek-ai/dsh-agent-presets'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
@@ -15,7 +15,7 @@ import { HarnessConversationService } from './harness.ts'
 import { startChannel } from './channel.ts'
 import { LarkRuntime } from './runtime.ts'
 import { createSettingsApi } from './settings-api.ts'
-import { handleSettingsRequest, SETTINGS_PATH } from './web.ts'
+import { APPLY_PATH, STATUS_PATH, handleApplyRequest, handleStatusRequest } from './web.ts'
 
 export const name = 'lark-channel'
 export const inject = [
@@ -40,12 +40,12 @@ export async function apply(ctx: Context, rawConfig: PluginConfig): Promise<void
     throw new Error('dsh-lark requires Harness agent, settings, credentials, workspace, and webServer services')
   }
 
+  const namespace = LARK_SETTINGS_NAMESPACE as SettingsNamespace
   const settingsScope = settings.register(
-    settingsNamespace(LARK_SETTINGS_NAMESPACE),
+    namespace,
     ConfigSchema,
     { base: rawConfig, applies: 'live' },
   )
-  const namespace = settingsNamespace(LARK_SETTINGS_NAMESPACE)
   const currentSettings = (): SettingsConfig => resolveSettingsConfig(settingsScope.get())
   let apiUpdateDepth = 0
 
@@ -75,23 +75,29 @@ export async function apply(ctx: Context, rawConfig: PluginConfig): Promise<void
       ...unset.map(key => ({ op: 'unset' as const, path: [key] })),
     ], expectedRevision),
     credentials: {
-      describe: ref => credentials.describe(credentialRef(ref)),
       set: (ref, value) => credentials.set(credentialRef(ref), value),
-      unset: ref => credentials.unset(credentialRef(ref)),
     },
     runtimeStatus: () => runtime.status(),
     reconcile: () => runtime.reconcile(),
   })
 
   settingsScope.watch(() => apiUpdateDepth > 0 ? undefined : runtime.reconcile())
-  ctx.on('credentials/updated', ref => {
+  const onCredentialUpdated = (ref: string) => {
     if (apiUpdateDepth === 0 && ref === currentSettings().appSecretRef) void runtime.reconcile()
-  })
+  }
+  const on = ctx.on.bind(ctx) as (name: string, listener: (ref: string) => void) => unknown
+  on('credentials/updated', onCredentialUpdated)
+  on('credentials/reference-updated', onCredentialUpdated)
   ctx.effect(() => webServer.register({
     kind: 'exact',
-    path: SETTINGS_PATH,
-    handler: (req, res) => handleSettingsRequest(req, res, api),
-  }), 'dsh-lark: settings page')
+    path: STATUS_PATH,
+    handler: (req, res) => handleStatusRequest(req, res, api),
+  }), 'dsh-lark: status route')
+  ctx.effect(() => webServer.register({
+    kind: 'exact',
+    path: APPLY_PATH,
+    handler: (req, res) => handleApplyRequest(req, res, api),
+  }), 'dsh-lark: apply route')
   ctx.effect(() => () => runtime.dispose(), 'dsh-lark: runtime')
   await runtime.reconcile()
 }
