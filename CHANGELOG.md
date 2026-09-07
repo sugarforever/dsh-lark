@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.6
+
+- Stop bundling and mounting `@sugarforever/dsh-zvec-grep`; it remains an independently installable plugin and no longer collides with an existing `zvec-grep` loader entry.
+- Remove the temporary `hono` dependency, whose ownership belongs to the independently published zvec integration.
+
 ## 0.2.5
 
 - Supply the `hono` runtime dependency required by the MCP HTTP adapter bundled through `dsh-zvec-grep`, eliminating its missing-peer warning in clean DSH Profile installs.

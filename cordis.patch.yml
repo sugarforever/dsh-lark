@@ -1,15 +1,3 @@
-# Workspace search starts before the Lark channel so new sessions are indexed immediately.
-- insert:
-    - id: zvec-grep
-      name: '@sugarforever/dsh-zvec-grep'
-      config:
-        embedding: local/potion-code-16m-v2
-        device: auto
-        defaultLimit: 10
-        maxLimit: 30
-        watchDebounceMs: 750
-        reconcileIntervalMs: 3600000
-        statusPollIntervalMs: 2000
 # The channel stays active while unconfigured so it can serve its local settings page.
 - insert:
     - id: lark-channel
