@@ -51,6 +51,11 @@ describe('release configuration', () => {
     expect(readme).toContain('plugin --profile web remove @sugarforever/dsh-zvec-grep')
   })
 
+  it('supplies the MCP HTTP peer required by the bundled zvec search dependency', async () => {
+    const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+    expect(pkg.dependencies.hono).toMatch(/^\^4\./)
+  })
+
   it('declares a Harness web client that contributes the embedded settings section', async () => {
     const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
     expect(pkg.dsh.client).toEqual({

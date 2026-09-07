@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.5
+
+- Supply the `hono` runtime dependency required by the MCP HTTP adapter bundled through `dsh-zvec-grep`, eliminating its missing-peer warning in clean DSH Profile installs.
+- Add a release regression check so future package manifests continue to satisfy the bundled MCP dependency tree.
+
 ## 0.2.4
 
 - Install and mount `@sugarforever/dsh-zvec-grep` with the Lark bundle so created and resumed sessions receive automatic background workspace indexing and the `zvec_search` tool.
